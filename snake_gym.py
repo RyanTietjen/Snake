@@ -108,7 +108,7 @@ class SnakeEnv(gym.Env):
         if (new_head[0] < 0 or new_head[0] >= self.grid_size or 
             new_head[1] < 0 or new_head[1] >= self.grid_size):
             self.done = True
-            return self.get_observation(), 0, True, {'score': self.score}
+            return self.get_observation(), -10, True, {'score': self.score}
         
         # Check for collision with self
         if new_head in self.snake:
