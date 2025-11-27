@@ -30,9 +30,9 @@ ACTIVE_HASH_FUNCTION = 'hybrid'
 # Config variables
 num_episodes = 250000
 batch_size = 128
-gamma = 0.99998
+gamma = 0.9999
 learning_rate = 0.0005
-buffer_capacity = 500000
+buffer_capacity = 100000
 epsilon_decay = 0.999
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -362,15 +362,16 @@ else:
     
     print(f"Model loaded successfully")
     
-    num_eval_episodes = 100
+    num_eval_episodes = 1000
+    max_steps_per_episode = 50000 # Avoid looping
     
     policy_net.eval()
     episode_rewards = []
     episode_lengths = []
-    unique_states = set()
+    episodes_cut_short = 0
     
     print(f"\nEvaluating DQN for {num_eval_episodes} episodes...")
-    print(f"Using {ACTIVE_HASH_FUNCTION} state representation")
+    print(f"Max steps per episode: {max_steps_per_episode}")
     
     eval_start_time = time.time()
     
@@ -383,10 +384,7 @@ else:
         total_reward = 0
         steps = 0
         
-        while True:
-            state_tuple = tuple(state.cpu().numpy())
-            unique_states.add(state_tuple)
-            
+        while True: 
             # Softmax action selection for evaluation
             with torch.no_grad():
                 q_values = policy_net(state)
@@ -402,17 +400,27 @@ else:
             if gui_flag:
                 refresh(action, reward, done, info, delay=0.05)
             
+            if steps >= max_steps_per_episode:
+                episodes_cut_short += 1
+                episode_rewards.append(total_reward)
+                break
+            
             if done:
                 break
         
-        episode_rewards.append(total_reward)
-        episode_lengths.append(steps)
+        if steps < max_steps_per_episode:
+            episode_rewards.append(total_reward)
+            episode_lengths.append(steps)
     
     eval_time = time.time() - eval_start_time
     
-    print(f"Number of unique states encountered during evaluation: {len(unique_states)}")
+
     print(f"Average reward over {num_eval_episodes} evaluation episodes: {np.mean(episode_rewards):.4f}")
-    print(f"Average episode length (number of actions): {np.mean(episode_lengths):.4f}")
+    if len(episode_lengths) > 0:
+        print(f"Average episode length (number of actions, excluding loops): {np.mean(episode_lengths):.4f}")
+    else:
+        print(f"Average episode length (number of actions, excluding loops): N/A (all episodes looped)")
+    print(f"Episodes cut short due to max steps: {episodes_cut_short} ({100*episodes_cut_short/num_eval_episodes:.2f}%)")
     print(f"Total time for {num_eval_episodes} evaluation episodes: {eval_time:.4f} seconds")
     print(f"Min reward: {np.min(episode_rewards):.4f}")
     print(f"Max reward: {np.max(episode_rewards):.4f}")
