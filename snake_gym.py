@@ -1,3 +1,7 @@
+"""
+This file was heavily modified by Github Copilot. 
+Prompt: create a Snake game environment using Gymnasium.
+"""
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -8,7 +12,7 @@ class SnakeEnv(gym.Env):
         super(SnakeEnv, self).__init__()
         self.grid_size = grid_size
         self.action_space = spaces.Discrete(4)  # 0: up, 1: right, 2: down, 3: left
-        self.observation_space = spaces.Box(low=0, high=5, shape=(grid_size, grid_size), dtype=np.int8)
+        self.observation_space = spaces.Box(low=0, high=6, shape=(grid_size, grid_size), dtype=np.int8)
         
         self.food_types = {
             'apple': {'value': 10, 'grid_id': 2},
@@ -67,12 +71,16 @@ class SnakeEnv(gym.Env):
             self.food_positions['banana'] = random.choice(empty_cells)
     
     def get_observation(self):
-        """Create grid representation: 0=empty, 1=snake, 2=apple, 3=orange, 4=banana"""
+        """Create grid representation: 0=empty, 1=snake_body, 2=apple, 3=orange, 4=banana, 5=snake_head"""
         grid = np.zeros((self.grid_size, self.grid_size), dtype=np.int8)
         
-        # Mark snake positions
-        for pos in self.snake:
+        # Mark snake body (excluding head)
+        for pos in self.snake[1:]:
             grid[pos] = 1
+        
+        # Mark snake head
+        if len(self.snake) > 0:
+            grid[self.snake[0]] = 5
         
         # Mark food positions with their respective IDs
         for food_name, food_pos in self.food_positions.items():
