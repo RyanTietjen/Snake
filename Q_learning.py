@@ -1,10 +1,16 @@
+"""
+File usage:
+- Update hash function, num_episodes, and decay_rate.
+- To train: python Q_learning.py train
+- To evaluate with GUI: python Q_learning.py gui
+- To evaluate without GUI: python Q_learning.py 
+"""
 import sys
 import time
 import pickle
 import numpy as np
 from tqdm import tqdm
 from snake_gui import *
-import matplotlib.pyplot as plt
 
 train_flag = 'train' in sys.argv
 gui_flag = 'gui' in sys.argv
@@ -12,179 +18,151 @@ gui_flag = 'gui' in sys.argv
 setup(GUI=gui_flag)
 env = game # Gym environment already initialized within snake_gui.py
 
-# ============================================================================
-# HASH FUNCTIONS - Add new hash functions here for experimentation
-# ============================================================================
+"""
+whole_board
+hash_fruit_directions
+hash_fruit_directions_with_snake_direction
+hash_fruit_directions_with_snake_direction_3_3_surroundings
+hash_fruit_directions_with_snake_direction_4_4_surroundings
+"""
+ACTIVE_HASH_FUNCTION = 'hash_fruit_directions_with_snake_direction' 
 
+num_episodes = 1000
+decay_rate = 0.999
+
+# ============================================================================
+# HASH FUNCTIONS
+# ============================================================================
 def hash_whole_board_all_info():
-    """Hash the entire board state for use as a key in Q-table
-    
-    Captures:
-    - Snake head and body positions
-    - Direction the snake is facing
+    """
+    Hashes all info of the board, including:
+    - Snake head, direction its looking, and body positions (in order)
     - Positions of all three fruits (apple, orange, banana)
     
-    Returns a string representation that can be used as a dictionary key
+    # of unique states is extremely large
+    
+    Example:
+    5_5,4_5,3_5|10|8_6,6_2,1_3
+    Snake is in starting position, looking right, with apple at (8,6), banana at (6,2), orange at (1,3)
     """
-    # Get snake positions and convert to string
     snake_str = ','.join(f"{x}_{y}" for x, y in env.snake)
+    dir_str = f"{env.direction[0]}{env.direction[1]}"
     
-    # Get direction
-    dir_str = f"{env.direction[0]}_{env.direction[1]}"
-    
-    # Get food positions (sorted for consistency)
+    # Sort for consistentcy
     food_items = sorted(env.food_positions.items())
-    food_str = ','.join(f"{ftype}:{pos[0]}_{pos[1]}" for ftype, pos in food_items)
+    apple_pos = str(food_items[0][1]).replace('(', '').replace(')', '').replace(',', '').replace(' ', '_')
+    banana_pos = str(food_items[1][1]).replace('(', '').replace(')', '').replace(',', '').replace(' ', '_')
+    orange_pos = str(food_items[2][1]).replace('(', '').replace(')', '').replace(',', '').replace(' ', '_')
     
-    # Combine all components into a single string separated by '|'
-    state_hash = f"{snake_str}|{dir_str}|{food_str}"
-    
-    return state_hash
-
-def hash_fruit_directions_with_snake_direction_3_3_surroundings():
-    """
-    Hashes the relative directions of the fruits, snake direction, and 3x3 surrounding tiles.
-    
-    Includes:
-    - Fruit directions (apple, banana, orange)
-    - Snake facing direction
-    - Which of the 8 adjacent tiles (including diagonals) contain snake body
-    
-    For example:
-    - 'NSE0110100000' means:
-      - apple is north, banana is south, orange is east
-      - snake facing direction (0,1) (Right)
-      - surrounding tiles (N, NE, E, SE, S, SW, W, NW) with 1=body, 0=empty
-
-    4^3 * 4 * 2^8 = 65536 unique states
-    """
-    head_x, head_y = env.snake[0]
-    dir_str = f"{env.direction[0]}{env.direction[1]}"
-    food_str = get_fruit_directions(env.snake[0], env.food_positions)
-    
-    # Check 8 adjacent tiles for snake body (N, NE, E, SE, S, SW, W, NW)
-    adjacent_offsets = [
-        (0, -1),   # N
-        (1, -1),   # NE
-        (1, 0),    # E
-        (1, 1),    # SE
-        (0, 1),    # S
-        (-1, 1),   # SW
-        (-1, 0),   # W
-        (-1, -1),  # NW
-    ]
-    
-    # Convert snake body to set for O(1) lookup (exclude head)
-    snake_body_set = set(env.snake[1:])
-    
-    # Check each adjacent position
-    surrounding = []
-    for dx, dy in adjacent_offsets:
-        adj_pos = (head_x + dx, head_y + dy)
-        if adj_pos in snake_body_set:
-            surrounding.append('1')
-        else:
-            surrounding.append('0')
-    
-    surrounding_str = ''.join(surrounding)
-    
-    return f"{food_str}{dir_str}{surrounding_str}"
-
-def hash_fruit_directions_with_snake_direction_4_4_surroundings():
-    """
-    Hashes the relative directions of the fruits, snake direction, and 4x4 surrounding tiles.
-    
-    Includes:
-    - Fruit directions (apple, banana, orange)
-    - Snake facing direction
-    - Which of the tiles in a 4x4 grid centered on the snake head contain snake body or walls
-    
-    The 4x4 grid includes:
-    - 2 tiles in each direction from the head (excludes the head itself)
-    - Total of 15 tiles checked (4x4 = 16, minus the head position = 15)
-    - Tiles that are walls (out of bounds) are marked as 1
-    
-    For example:
-    - 'NSE01000100010001000' means:
-      - apple is north, banana is south, orange is east
-      - snake facing direction (0,1) (Right)
-      - surrounding tiles in 4x4 grid with 1=body/wall, 0=empty
-    
-    4^3 * 4 * 2^15 = 8,388,608 unique states
-    """
-    head_x, head_y = env.snake[0]
-    dir_str = f"{env.direction[0]}{env.direction[1]}"
-    food_str = get_fruit_directions(env.snake[0], env.food_positions)
-    
-    # Check 4x4 grid around snake head (excluding the head itself)
-    # Grid goes from -2 to +1 in both x and y directions from head
-    surrounding_offsets = []
-    for dy in range(-2, 2):
-        for dx in range(-2, 2):
-            if dx != 0 or dy != 0:  # Exclude the head position itself
-                surrounding_offsets.append((dx, dy))
-    
-    # Convert snake body to set for O(1) lookup (exclude head)
-    snake_body_set = set(env.snake[1:])
-    
-    # Check each position in the 4x4 grid
-    surrounding = []
-    for dx, dy in surrounding_offsets:
-        adj_pos = (head_x + dx, head_y + dy)
-        # Check if position is wall (out of bounds) or contains snake body
-        if (adj_pos[0] < 0 or adj_pos[0] >= env.grid_size or 
-            adj_pos[1] < 0 or adj_pos[1] >= env.grid_size or 
-            adj_pos in snake_body_set):
-            surrounding.append('1')
-        else:
-            surrounding.append('0')
-    
-    surrounding_str = ''.join(surrounding)
-    
-    return f"{food_str}{dir_str}{surrounding_str}"
-
-def hash_fruit_directions_with_snake_direction():
-    """
-    Hashes only the relative directions of the fruits from the snake's head
-    in the order apple, banana, orange.
-
-    Prioritizes the direction with the smaller distance.
-
-    For example:
-    - 'NSE01' means apple is north, banana is south, orange is east of the snake head, with snake facing direction (0,1) (Right).
-    - 'WNN0-1' means apple is west, banana is north, orange is north of the snake head, with snake facing direction (0,-1) (Left).
-
-    4^3 * 4 = 256 unique states
-    
-    """
-    head_pos = env.snake[0]
-    dir_str = f"{env.direction[0]}{env.direction[1]}"
-    food_str = get_fruit_directions(head_pos, env.food_positions)
-    return f"{food_str}{dir_str}"
+    return f"{snake_str}|{dir_str}|{apple_pos},{banana_pos},{orange_pos}"
 
 def hash_fruit_directions():
     """
     Hashes the relative directions of the fruits from the snake's head
     in the order apple, banana, orange.
 
-    Also includes the current direction the snake is facing.
-
-    Prioritizes the direction with the smaller distance.
-
-    For example:
-    - 'NSE' means apple is north, banana is south, orange is east of the snake head.
-
     4^3 = 64 unique states
-    
+
+    Example:
+    NSE 
+    apple is north, banana is south, orange is east of the snake head.
     """
-    head_pos = env.snake[0]
-    return get_fruit_directions(head_pos, env.food_positions)
+    return get_fruit_directions(env.snake[0], env.food_positions)
+
+def hash_fruit_directions_with_snake_direction():
+    """
+    Hashes only the relative directions of the fruits from the snake's head
+    in the order apple, banana, orange.
+    
+    4^3 * 4 = 256 unique states
+
+    Example:
+    NSE|10 
+    apple is north, banana is south, orange is east, with snake facing direction (1,0) (East).
+    """
+    dir_str = f"{env.direction[0]}{env.direction[1]}"
+    food_str = get_fruit_directions(env.snake[0], env.food_positions)
+    return f"{food_str}|{dir_str}"
+
+def hash_fruit_directions_with_snake_direction_3_3_surroundings():
+    """
+    Hashes the relative directions of the fruits, snake direction, and 3x3 surrounding tiles.
+    
+    4^3 * 4 * 2^8 = 65536 unique states
+    
+    Example:
+    EEW|10|00010000
+    - apple is east, banana is east, orange is west
+    - snake facing direction (1,0) (East)
+    - surrounding tiles (N, NE, E, SE, S, SW, W, NW) with 1=body/wall, 0=empty
+    """
+    head_x, head_y = env.snake[0]
+    dir_str = f"{env.direction[0]}{env.direction[1]}"
+    food_str = get_fruit_directions(env.snake[0], env.food_positions)
+    
+    surrounding_offsets = []
+    for y in range(-1, 2):
+        for x in range(-1, 2):
+            if x != 0 or y != 0: 
+                surrounding_offsets.append((x, y))
+    
+    surrounding = ""
+    for x, y in surrounding_offsets:
+        adj_pos = (head_x + x, head_y + y)
+        if (adj_pos[0] < 0 or adj_pos[0] >= env.grid_size or 
+            adj_pos[1] < 0 or adj_pos[1] >= env.grid_size or 
+            adj_pos in env.snake[1:]):
+            surrounding += "1"
+        else:
+            surrounding += "0"
+    
+    return f"{food_str}|{dir_str}|{surrounding}"
+
+def hash_fruit_directions_with_snake_direction_4_4_surroundings():
+    """
+    Hashes the relative directions of the fruits, snake direction, and 4x4 surrounding tiles.
+
+    4^3 * 4 * 2^15 = 8,388,608 unique states
+    
+    Example:
+    NNS|10|000000001100000 means:
+    - apple is north, banana is north, orange is south
+    - snake facing direction (1,0) (East)
+    - surrounding tiles in 4x4 grid with 1=body/wall, 0=empty  
+    """
+    head_x, head_y = env.snake[0]
+    dir_str = f"{env.direction[0]}{env.direction[1]}"
+    food_str = get_fruit_directions(env.snake[0], env.food_positions)
+    
+    surrounding_offsets = []
+    for dy in range(-2, 2):
+        for dx in range(-2, 2):
+            if dx != 0 or dy != 0: 
+                surrounding_offsets.append((dx, dy))
+    
+    surrounding = ""
+    for x, y in surrounding_offsets:
+        adj_pos = (head_x + x, head_y + y)
+        if (adj_pos[0] < 0 or adj_pos[0] >= env.grid_size or 
+            adj_pos[1] < 0 or adj_pos[1] >= env.grid_size or 
+            adj_pos in env.snake[1:]):
+            surrounding += "1"
+        else:
+            surrounding += "0"
+    
+    return f"{food_str}|{dir_str}|{surrounding}"
 
 # ============================================================================
-# Helper functions for hashing
+# HELPER FUNCTIONS
 # ============================================================================
 def get_fruit_directions(head_pos, food_positions):
-    """Calculate the direction to each fruit based on closest axis distance.
+    """
+    This helper function was mostly generated by GitHub Copilot.
+    Prompt: Create a helper function that calculates the cardinal direction to each fruit,
+    prioritizing the closest axis distance. For example, if the banana is up 2 and right 5,
+    the direction should be N.
+    
+    Calculate the direction to each fruit based on closest axis distance.
     
     Args:
         head_pos: Tuple of (x, y) for snake head position
@@ -242,10 +220,6 @@ def get_fruit_directions(head_pos, food_positions):
     
     return ''.join(fruit_directions)
 
-# ============================================================================
-# HASH FUNCTION REGISTRY
-# ============================================================================
-# Add your hash functions to this dictionary to easily switch between them
 HASH_FUNCTIONS = {
     'whole_board': hash_whole_board_all_info,
     'hash_fruit_directions': hash_fruit_directions,
@@ -254,18 +228,14 @@ HASH_FUNCTIONS = {
     'hash_fruit_directions_with_snake_direction_4_4_surroundings': hash_fruit_directions_with_snake_direction_4_4_surroundings
 }
 
-# Select which hash function to use (change this to test different approaches)
-ACTIVE_HASH_FUNCTION = 'hash_fruit_directions_with_snake_direction_4_4_surroundings' 
-
 hash_state = HASH_FUNCTIONS[ACTIVE_HASH_FUNCTION]
-
-num_episodes = 1000000
-decay_rate = 0.999999
 
 print(f"Using hash function: {ACTIVE_HASH_FUNCTION}")
 print(f"Example hash: {hash_state()}") 
 
-
+# ============================================================================
+# Q Learning
+# ============================================================================
 def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
     """
     Run Q-learning algorithm for a specified number of episodes.
@@ -290,7 +260,6 @@ def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
   
         while True:
             state = hash_state()
-   
             """
             For a state that does not already have a corresponding entry in the Q-table dict, you
             should add an entry with the initial Q-value estimates for all actions from that state set to 0. 
@@ -338,29 +307,12 @@ def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
 
         episode_rewards.append(total_episode_reward)
         epsilon *= decay_rate
-        
-    episode_rewards_array = np.array(episode_rewards)
-    cumulative_sum = np.cumsum(episode_rewards_array)
-    episode_numbers = np.arange(1, len(episode_rewards) + 1)
-    running_avg = cumulative_sum / episode_numbers
-
-    # plt.figure(figsize=(12, 6))
-    # plt.plot(running_avg, linewidth=2)
-    
-    # plt.xlabel('Episode', fontsize=12, fontweight='bold')
-    # plt.ylabel('Average Reward', fontsize=12, fontweight='bold')
-    # plt.ylim(bottom=None, top=11000)
-    # plt.title(f'Cumulative Running Average Reward per Episode During Training\nHash: {ACTIVE_HASH_FUNCTION}, Episodes: {num_episodes}, Decay: {decay_rate}', 
-    #           fontsize=14, fontweight='bold', pad=20)
-    # plt.legend()
-    # plt.grid(True, alpha=0.3)
-    # plt.tight_layout()
-    
-    # training_plot_filename = f'training_rewards_{ACTIVE_HASH_FUNCTION}_{num_episodes}_{decay_rate}.png'
-    # plt.savefig(training_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
 
     return Q_table
 
+# ============================================================================
+# Training & Evaluation
+# ============================================================================
 if train_flag:
     Q_table = Q_learning(num_episodes=num_episodes, gamma=0.9, epsilon=1, decay_rate=decay_rate) # Run Q-learning
 
@@ -425,10 +377,7 @@ if not train_flag:
                 episode_rewards.append(total_reward)
                 moves_made_per_episode.append(moves_made)
                 break
-        
-    
-    # Print evaluation statistics
-
+            
     avg_reward = np.mean(episode_rewards)
     eval_time = time.time() - start
 
