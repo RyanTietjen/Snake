@@ -317,7 +317,7 @@ if train_flag:
     Q_table = Q_learning(num_episodes=num_episodes, gamma=0.9, epsilon=1, decay_rate=decay_rate) # Run Q-learning
 
     # Save the Q-table dict to a file
-    filename = f'Q_table_{ACTIVE_HASH_FUNCTION}_{num_episodes}_{decay_rate}.pickle'
+    filename = f'models/q_learning/Q_table_{ACTIVE_HASH_FUNCTION}_{num_episodes}_{decay_rate}.pickle'
     print("Saving file:", filename)
     with open(filename, 'wb') as handle:
         pickle.dump(Q_table, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -330,7 +330,7 @@ def softmax(x, temp=1.0):
 
 if not train_flag:
     # Load the Q-table dict from a file
-    filename = f'Q_table_{ACTIVE_HASH_FUNCTION}_{num_episodes}_{decay_rate}.pickle'
+    filename = f'models/q_learning/Q_table_{ACTIVE_HASH_FUNCTION}_{num_episodes}_{decay_rate}.pickle'
     print(f"Loading Q-table from {filename}...")
     start_load = time.time()
     with open(filename, 'rb') as handle:
