@@ -23,12 +23,12 @@ whole_board
 hash_fruit_directions
 hash_fruit_directions_with_snake_direction
 hash_fruit_directions_with_snake_direction_3_3_surroundings
-hash_fruit_directions_with_snake_direction_4_4_surroundings
+hash_fruit_directions_with_snake_direction_5_5_surroundings
 """
-ACTIVE_HASH_FUNCTION = 'hash_fruit_directions_with_snake_direction' 
+ACTIVE_HASH_FUNCTION = 'hash_fruit_directions_with_snake_direction_3_3_surroundings' 
 
-num_episodes = 1000
-decay_rate = 0.999
+num_episodes = 5000000
+decay_rate = 0.999999
 
 # ============================================================================
 # HASH FUNCTIONS
@@ -71,8 +71,9 @@ def hash_fruit_directions():
 
 def hash_fruit_directions_with_snake_direction():
     """
-    Hashes only the relative directions of the fruits from the snake's head
+    Hashes the relative directions of the fruits from the snake's head
     in the order apple, banana, orange.
+    Also includes the snake's current direction.
     
     4^3 * 4 = 256 unique states
 
@@ -118,25 +119,25 @@ def hash_fruit_directions_with_snake_direction_3_3_surroundings():
     
     return f"{food_str}|{dir_str}|{surrounding}"
 
-def hash_fruit_directions_with_snake_direction_4_4_surroundings():
+def hash_fruit_directions_with_snake_direction_5_5_surroundings():
     """
-    Hashes the relative directions of the fruits, snake direction, and 4x4 surrounding tiles.
+    Hashes the relative directions of the fruits, snake direction, and 5x5 surrounding tiles.
 
-    4^3 * 4 * 2^15 = 8,388,608 unique states
+    4^3 * 4 * 2^24 = 1,073,741,824 unique states
     
     Example:
-    NNS|10|000000001100000 means:
+    NNS|10|000000001100000000000000 means:
     - apple is north, banana is north, orange is south
     - snake facing direction (1,0) (East)
-    - surrounding tiles in 4x4 grid with 1=body/wall, 0=empty  
+    - surrounding tiles in 5x5 grid with 1=body/wall, 0=empty  
     """
     head_x, head_y = env.snake[0]
     dir_str = f"{env.direction[0]}{env.direction[1]}"
     food_str = get_fruit_directions(env.snake[0], env.food_positions)
     
     surrounding_offsets = []
-    for dy in range(-2, 2):
-        for dx in range(-2, 2):
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
             if dx != 0 or dy != 0: 
                 surrounding_offsets.append((dx, dy))
     
@@ -225,7 +226,7 @@ HASH_FUNCTIONS = {
     'hash_fruit_directions': hash_fruit_directions,
     'hash_fruit_directions_with_snake_direction': hash_fruit_directions_with_snake_direction,
     'hash_fruit_directions_with_snake_direction_3_3_surroundings': hash_fruit_directions_with_snake_direction_3_3_surroundings,
-    'hash_fruit_directions_with_snake_direction_4_4_surroundings': hash_fruit_directions_with_snake_direction_4_4_surroundings
+    'hash_fruit_directions_with_snake_direction_5_5_surroundings': hash_fruit_directions_with_snake_direction_5_5_surroundings
 }
 
 hash_state = HASH_FUNCTIONS[ACTIVE_HASH_FUNCTION]
@@ -339,9 +340,11 @@ if not train_flag:
     
     print(f"Q-table loaded successfully in {load_time:.2f} seconds!")
     
-    num_eval_episodes = 10000
+    num_eval_episodes = 1000
+    max_steps_per_episode = 10000  # Avoid looping
     episode_rewards = []
     moves_made_per_episode = []
+    episodes_cut_short = 0
     unseen_states = set()
     q_table_actions = 0
     random_actions = 0
@@ -371,7 +374,13 @@ if not train_flag:
             moves_made += 1
 
             if gui_flag:
-                refresh(obs, reward, done, info, delay=0.05)
+                refresh(obs, reward, done, info, delay=0.1)
+
+            if moves_made >= max_steps_per_episode:
+                episodes_cut_short += 1
+                episode_rewards.append(total_reward)
+                moves_made_per_episode.append(moves_made)
+                break
 
             if done:
                 episode_rewards.append(total_reward)
@@ -382,9 +391,10 @@ if not train_flag:
     eval_time = time.time() - start
 
     print(f"Number of unique states in Q-table: {len(Q_table)}")
-    print(f"Average reward over 10,000 evaluation episodes: {avg_reward:.4f}")
+    print(f"Average reward over {num_eval_episodes} evaluation episodes: {avg_reward:.4f}")
     print(f"Average episode length (number of actions): {np.mean(moves_made_per_episode):.4f}")
-    print(f"Total time for 10,000 evaluation episodes: {eval_time:.4f} seconds")
+    print(f"Episodes cut short due to max steps: {episodes_cut_short} ({100*episodes_cut_short/num_eval_episodes:.2f}%)")
+    print(f"Total time for {num_eval_episodes} evaluation episodes: {eval_time:.4f} seconds")
     print(f"Number of unique states encountered during evaluation not in Q-table: {len(unseen_states)}")
     print(f"Percentage of actions taken using Q-table: {q_table_actions / (q_table_actions + random_actions):.4f}")
     print(f"Percentage of random actions due to missing Q-values: {random_actions / (q_table_actions + random_actions):.4f}")

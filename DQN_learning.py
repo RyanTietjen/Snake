@@ -345,7 +345,7 @@ else:
     file_name = f'models/dqn/dqn_model_{num_episodes}_{learning_rate}_{ACTIVE_HASH_FUNCTION}.pth'
     print(f"Loading {file_name}")
     
-    checkpoint = torch.load(file_name)
+    checkpoint = torch.load(file_name, map_location=device)
     
     sample_state = hash_state()
     input_size = len(sample_state)
