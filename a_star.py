@@ -36,62 +36,116 @@ def find_path_with_a_star(obs):
         print("No food found!")
         return []
     dists = np.linalg.norm(food - head_pos, axis=1)
-    closest_food = food[np.argmin(dists)]
 
-    path = []
-    at_goal = False
-    frontier = [(head_pos, [])]
-    explored = set()
+    def get_path_to_food(food_pos):
+        path = []
+        at_goal = False
+        frontier = [(head_pos, [])]
+        explored = set()
+
+        def heuristic(a, b):
+            return abs(a[0] - b[0]) + abs(a[1] - b[1]) # Manhattan distance
+
+        while not at_goal:
+            if not frontier:
+                return []
+
+            # Sort frontier by estimated cost (g + h)
+
+            def estimated_cost(node):
+                node_pos, node_path = node
+                return len(node_path) + heuristic(node_pos, tuple(closest_food))
+
+            frontier.sort(key=estimated_cost)
+
+            current_pos, current_path = frontier.pop(0) # select the most promising node from the frontier
+
+            # remove duplicates of current_pos from frontier
+            frontier = [node for node in frontier if node[0] != current_pos]
+
+            if current_pos == tuple(food_pos): # success: reached food
+                path = current_path
+                at_goal = True
+                break
+            
+            explored.add(current_pos)
+
+            # Explore neighbors (up, right, down left)
+            for move, direction in enumerate([(0, -1), (1, 0), (0, 1), (-1, 0)]):
+                neighbor = (current_pos[0] + direction[0], current_pos[1] + direction[1])
+                if (0 <= neighbor[0] < obs.shape[0] and
+                    0 <= neighbor[1] < obs.shape[1] and
+                    obs[neighbor] != 1 and # not snake body
+                    neighbor not in explored):
+
+                    new_path = current_path + [move]
+                    frontier.append((neighbor, new_path))
+
+        return path
     
-    def heuristic(a, b):
-        return abs(a[0] - b[0]) + abs(a[1] - b[1]) # Manhattan distance
+    # find path to closest food, if that returns [], try the next closest food
+    sorted_indices = np.argsort(dists)
+    for idx in sorted_indices:
+        closest_food = food[idx]
+        path = get_path_to_food(closest_food)
+        if len(path) > 0:
+            return path
+    return [] # no path found to any food. we are stuck
+
+N_EVAL_EPISODES = 10_000
+EVAL_NAME = 'a_star_closest_everymove'
+
+EVERY_MOVE = True
+
+sum_scores = 0
+ep_scores = []
+
+for eval_ep in range(N_EVAL_EPISODES):
+    obs = env.reset()
+
+    path = find_path_with_a_star(obs)
+
+    while True:
+        while len(path) > 0:
+            action = path.pop(0)
     
-    while not at_goal:
-        if not frontier:
-            print("No path found!")
-            return []
-        
-        # Sort frontier by estimated cost (g + h)
-
-        def estimated_cost(node):
-            node_pos, node_path = node
-            return len(node_path) + heuristic(node_pos, tuple(closest_food))
-
-        frontier.sort(key=estimated_cost)
-
-        current_pos, current_path = frontier.pop(0) # select the most promising node from the frontier
-        
-        if current_pos == tuple(closest_food): # success: reached food
-            path = current_path
-            at_goal = True
+            obs, reward, done, info = env.step(action)
+            
+            
+            if EVERY_MOVE:
+                # for everymove, recompute path to closest food
+                path = find_path_with_a_star(obs)
+            
+            if gui_flag:
+                time.sleep(0.05)
+                refresh(action, reward, done, info)
+        path = find_path_with_a_star(obs)
+        if len(path) == 0:
+            # stuck - take random actions untl game over
+            while not done:
+                action = random.randint(0, 3)
+                obs, reward, done, info = env.step(action)
+                if gui_flag:
+                    time.sleep(0.05)
+                    refresh(action, reward, done, info)
+        if done:
             break
-        
-        explored.add(current_pos)
-        
-        # Explore neighbors (up, down, left, right)
-        for move, direction in enumerate([(0, 1), (1, 0), (0, -1), (-1, 0)]):
-            neighbor = (current_pos[0] + direction[0], current_pos[1] + direction[1])
-            if (0 <= neighbor[0] < obs.shape[0] and
-                0 <= neighbor[1] < obs.shape[1] and
-                obs[neighbor] != 1 and # not snake body
-                neighbor not in explored):
-                
-                new_path = current_path + [move]
-                frontier.append((neighbor, new_path))
-    
-    return path
 
-find_path_with_a_star(obs)
+    print('Eval episode %d finished. Score: %d' % (eval_ep+1, env.score))
+    sum_scores += env.score
+    ep_scores.append(env.score)
 
-#time.sleep(1)
-#
-#obs, reward, done, info = env.step(1)
-## obs is 0=empty, 1=snake_body, 2=apple, 3=orange, 4=banana, 5=snake_head
-#
-#refresh(1, reward, done, info)
-#time.sleep(1)
-#
-#obs, reward, done, info = env.step(2)
-#refresh(2, reward, done, info)
-#time.sleep(1)
+print('Average score over %d eval episodes: %.2f' % (N_EVAL_EPISODES, sum_scores / N_EVAL_EPISODES))
 
+import matplotlib.pyplot as plt
+
+plt.hist(ep_scores, bins=20)
+plt.title('Score Distribution over %d Eval Episodes' % N_EVAL_EPISODES)
+plt.xlabel('Score')
+plt.ylabel('Frequency')
+plt.savefig(f'a_star_{EVAL_NAME}_score_distribution.png')
+
+# save ep_scores to a text file
+with open(f'a_star_{EVAL_NAME}_scores.txt', 'w') as f:
+    for score in ep_scores:
+        f.write(f'{score}\n')
