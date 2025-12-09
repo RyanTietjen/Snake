@@ -27,7 +27,7 @@ hash_fruit_directions_with_snake_direction_5_5_surroundings
 """
 ACTIVE_HASH_FUNCTION = 'hash_fruit_directions_with_snake_direction_3_3_surroundings' 
 
-num_episodes = 5000000
+num_episodes = 1000000
 decay_rate = 0.999999
 
 # ============================================================================

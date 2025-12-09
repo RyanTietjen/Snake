@@ -398,7 +398,7 @@ else:
             state = hash_state()
             
             if gui_flag:
-                refresh(action, reward, done, info, delay=0.05)
+                refresh(action, reward, done, info, delay=0.2)
             
             if steps >= max_steps_per_episode:
                 episodes_cut_short += 1
