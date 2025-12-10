@@ -28,9 +28,9 @@ hybrid
 ACTIVE_HASH_FUNCTION = 'hybrid' 
 
 # Config variables
-num_episodes = 250000
+num_episodes = 100000
 batch_size = 128
-gamma = 0.9999
+gamma = 0.99998
 learning_rate = 0.0005
 buffer_capacity = 100000
 epsilon_decay = 0.999
@@ -363,7 +363,7 @@ else:
     print(f"Model loaded successfully")
     
     num_eval_episodes = 1000
-    max_steps_per_episode = 50000 # Avoid looping
+    max_steps_per_episode = 10000 # Avoid looping
     
     policy_net.eval()
     episode_rewards = []
