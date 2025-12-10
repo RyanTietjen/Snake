@@ -85,22 +85,26 @@ def find_path_with_a_star(obs):
     
     # find path to closest food, if that returns [], try the next closest food
     sorted_indices = np.argsort(dists)
+    #sorted_indices = reversed(sorted_indices) # farthest
     for idx in sorted_indices:
         closest_food = food[idx]
         path = get_path_to_food(closest_food)
         if len(path) > 0:
             return path
     return [] # no path found to any food. we are stuck
-
-N_EVAL_EPISODES = 10_000
-EVAL_NAME = 'a_star_closest_everymove'
+    
+N_EVAL_EPISODES = 5_000
+EVAL_NAME = 'a_star_farthest'
 
 EVERY_MOVE = True
 
 sum_scores = 0
 ep_scores = []
+ep_steps = []
 
 for eval_ep in range(N_EVAL_EPISODES):
+    steps = 0
+    
     obs = env.reset()
 
     path = find_path_with_a_star(obs)
@@ -110,7 +114,7 @@ for eval_ep in range(N_EVAL_EPISODES):
             action = path.pop(0)
     
             obs, reward, done, info = env.step(action)
-            
+            steps += 1
             
             if EVERY_MOVE:
                 # for everymove, recompute path to closest food
@@ -134,8 +138,11 @@ for eval_ep in range(N_EVAL_EPISODES):
     print('Eval episode %d finished. Score: %d' % (eval_ep+1, env.score))
     sum_scores += env.score
     ep_scores.append(env.score)
+    ep_steps.append(steps)
 
 print('Average score over %d eval episodes: %.2f' % (N_EVAL_EPISODES, sum_scores / N_EVAL_EPISODES))
+print(f'Max score: {max(ep_scores)}')
+print(f'Average steps: {sum(ep_steps)/len(ep_steps)}')
 
 import matplotlib.pyplot as plt
 
